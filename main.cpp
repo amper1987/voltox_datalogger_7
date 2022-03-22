@@ -130,7 +130,7 @@ void setup() {
    
    modem_init();
 
-   // uart_init();
+   uart_init();
 
 }
 
