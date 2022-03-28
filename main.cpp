@@ -5,6 +5,8 @@
 #include "driver/uart.h"
 #include "driver/gpio.h"
 
+
+
 #define ADC0 36
 #define ADC1 39
 #define ADC2 34
@@ -17,13 +19,27 @@
 #define UART_BUFFER 1024
 #define RX_BUF_SIZE 1024
 #define buf_size 400
-#define sensor_buffer 1000
+#define sensor_buffer 400
 #define current_buffer (4)
 #define FILTER_LEN  25
 #define SIZE 100
 
+typedef union cracked_float_t
+{
+  float v;
+  char b[4];
+};
+cracked_float_t floatValue;
+
+typedef union cracked_zero_t
+{
+  float z;
+  char c[4];
+};
+cracked_zero_t zeroValue;
+
 uint32_t sensor_1 (uint32_t time);
-uint32_t sensor_2 (uint32_t time);
+uint32_t sensor_2 (uint32_t time);  
 uint32_t sensor_3 (uint32_t time);
 uint32_t sensor_4 (uint32_t time);
 
@@ -50,18 +66,19 @@ char ccid_buf [21];
 char rssi_buf [5];
 char ccid[] = {"AT#CCID\r\n"};
 char rssi[] = {"AT+CSQ\r\n"};
-char status[] = {"00000000"};
+char status[4] = {0x00, 0x00, 0x00, 0x00};
 char measurement_count[] = {'5'};
 char db_index[] = {'C'};
 char float_buffer[10];
+size_t len;
 
 
-char post[] = {"POST /telemetry.php HTTP/1.1\r\n"}; //name of the script on server
-char host[] = {"HOST: weile-enterprises.com\r\n"}; //name of the server URL
-char connection[] = {"Connection: Keep-Alive\r\n"}; //connection type
-char user_agent[] = {"User-Agent: WLS\r\n"}; //user agent
-char content_length[] = {"Content-Length: 66\r\n\r\n"}; //how many bytes in the measurement frame
-char end_frame[] = {"\r\n"}; //end of frame
+char  *my_str ="POST /telemetry.php HTTP/1.1\r\n"
+               "HOST: weile-enterprises.com\r\n"    
+               "Connection: Keep-Alive\r\n"         
+               "User-Agent: WLS\r\n"               
+               "Content-Length: 25\r\n\r\n"        
+               "\r\n"; //end of frame
 
 uint32_t convert(int ADC_Raw);
 void uart_init(void);
@@ -76,13 +93,12 @@ void measurement_header (void);
 void hhtp_header (void);
 //void modem_init (char *str)
 void toHex( float fv, char * buf );
+void float_toBytes (float val, char* bytes_array);
 
 char transfer_buffer[sensor_buffer];
 char http_buffer[1000];
 uint8_t data_buf [buf_size];
-char *etr = post;
-char *rtr = host;
-char *otr = connection;
+
 
 
 char buffer0[6];
@@ -127,12 +143,9 @@ void setup() {
    Serial.begin(9600);
 
    Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
-   
+
    modem_init();
-
-   uart_init();
-
-}
+  }
 
 void loop()
 {
@@ -146,26 +159,18 @@ void loop()
  Serial2.print('"'); 
  Serial2.print(",0,0,0\r\n"); //000
  delay(10000);
- //http header                   
- Serial2.print(post);
- Serial2.print(host);
- Serial2.print(connection);
- Serial2.print(user_agent);
- Serial2.print(content_length);
+ hhtp_header();
  measurement_header();
  capture_data();
- Serial2.print(transfer_buffer);
- Serial2.print(end_frame);
+ Serial2.write(transfer_buffer, 156);
+ Serial2.print("\r\n");
+// Serial2.print(measurement_count);
+ //Serial2.print(end_frame);
  memset(transfer_buffer,0,sizeof(transfer_buffer));
  transfer_buffer_index = 0;
  //hhtp_header();
  delay(10000);
  Serial2.print("AT#SGACT=1,0\r\n"); //factory reset to TELIT modem
- //Serial2.println (http_buffer);
- //measurement_header();
- //Serial2.println(transfer_buffer);
- //Serial2.println("C");
-
 } 
 
 
@@ -199,13 +204,14 @@ void capture_data(void)
   
 // UART transmisiion of 4 ac current sensors
 //sensor 1
-   dtostrf(ac_current_0, 5, 2, buffer0);
+  // dtostrf(ac_current_0, 5, 2, buffer0);
  //sprintf(buffer0,"%f", ac_current_0);
+ float_toBytes (ac_current_0, &buffer0[0]);
    for( x = 0; x < 4; x++)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer0[x];
   }
- 
+ /*
 //uart_write_bytes(UART_NUM_2, "\r\n", 2);
 //uart_write_bytes(UART_NUM_2, (const char*)buffer0, sizeof(buffer0));
 //uart_write_bytes(UART_NUM_2, "\r\n", 2);
@@ -303,6 +309,7 @@ void capture_data(void)
  //uart_write_bytes(UART_NUM_2, (const char*) transfer_buffer, transfer_buffer_index);
  //uart_write_bytes(UART_NUM_2, "\r\n", 2); 
  //delay(1000);
+ */
  }
 
 // sensor 1
@@ -395,28 +402,13 @@ uint32_t average_dc_current(int dc_voltage)
   return (Sum/FILTER_LEN); 
 }
 
-void uart_init(void) {
-    const uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        //.rx_flow_ctrl_thresh = 122,
-
-    };
-    uart_driver_install(UART_NUM_2, UART_BUFFER, 0, 0, NULL, 0);
-    uart_param_config(UART_NUM_2, &uart_config);
-    uart_set_pin(UART_NUM_2, 17, 16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-}
-
 void modem_init (void)
 {
 char buffer_ccid[SIZE];
 char *ptr = buffer_ccid;
 char buffer_rssi[SIZE];
 char *str = buffer_rssi;
-char *pt = (char *)&rssi_float;  
+char *pt = ccid_buf; 
 //Serial2.print(str);
 //delay(500); 
 //Modem initialization
@@ -432,18 +424,32 @@ for (int i = 0; i<sizeof(buffer_ccid); i++)
 {
     buffer_ccid[i]= Serial2.read();
     if ((ptr = strchr (buffer_ccid, '8'))) //check whether ' ' is found  
-    { 
-    size_t len = strlen (ptr); //advance pointer by 1, get length 
-        
-        memcpy (fc_buffer_ccid, ptr, len);// copy remaining part of string
+    {
+      //size_t len = strlen (ptr); //advance pointer by 1, get length 
+      memcpy (ccid_buf, ptr, 20);// copy remaining part of string
+      for (int i = 0; i<sizeof(ccid_buf); i++)
+      {  
+      if ((pt = strchr (ccid_buf, 'G')))
+      {
+       ESP.restart();
+      }
     }
- }
-  memcpy (ccid_buf, fc_buffer_ccid, 20); //copies first 19 bytes to the buf
+  }  
+}    
+      //memcpy (ccid_buf, fc_buffer_ccid, 20); //copies first 19 bytes to the buf
+
+    Serial2.println (strlen(ccid_buf));
+
+  if (strlen(ccid_buf) < 20)
+  {
+    ESP.restart();
+  }
+  
 
 Serial2.print("AT+CSQ\r\n"); //check signal quality
 delay(2000);
-for (int i = 0; i<sizeof(buffer_rssi); i++)
-{
+  for (int i = 0; i<sizeof(buffer_rssi); i++)
+  {
     buffer_rssi[i]= Serial2.read();
     if ((str = strchr (buffer_rssi, 'Q'))) // check whether ' ' is found 
     { 
@@ -454,11 +460,14 @@ for (int i = 0; i<sizeof(buffer_rssi); i++)
     }
       memcpy (fc_buffer_rssi, str, len); //copy remaining part of string
     } 
- } 
- memcpy (rssi_buf, fc_buffer_rssi, 2); //copies first 2 bytes to the buf
- rssi_int =  atoi(rssi_buf);
- rssi_float = (float) rssi_int;
- toHex(rssi_float,float_buffer);
+  } 
+  memcpy (rssi_buf, fc_buffer_rssi, 2); //copies first 2 bytes to the buf
+  rssi_float =  atof(rssi_buf);
+  floatValue.v = rssi_float;
+  float_buffer[0] = floatValue.b[3];
+  float_buffer[1] = floatValue.b[2];  
+  float_buffer[2] = floatValue.b[1];  
+  float_buffer[3] = floatValue.b[0]; 
  //sprintf (float_buffer, "%08X", (unsigned long) rssi_float);
  //sprintf (float_buffer, "%.2f", rssi_float);
  
@@ -480,48 +489,31 @@ delay(5000);
 //hhtp_header
 void hhtp_header (void)
 {
-   /*
-   Serial2.print(post);
-   Serial2.print(host);
-   Serial2.print(connection);
-   Serial2.print(user_agent);
-   Serial2.print(content_length);
-      Serial2.println('C');
-   Serial2.print(end_frame);*/
-   
   
-  //Serial2.print(connection);
-  //sprintf(http_buffer, "%s%s%s%s%s%s%s", post, host, connection, user_agent, content_length, nulls, end_frame );
- 
-  /*
-  for (x=0; x < sizeof(post); x++)
+  for (x=0; x < 123; x++)
   {
-  transfer_buffer[transfer_buffer_index++] = post[x];
+  transfer_buffer[transfer_buffer_index++] = my_str[x];
   }
-  for (x=0; x < sizeof(host); x++)
-  {
-  transfer_buffer[transfer_buffer_index++] = host[x];
-  }
-  for (x=0; x < sizeof(connection); x++)
-  {
-  transfer_buffer[transfer_buffer_index++] = connection[x];
-  }
-  for (x=0; x < sizeof(user_agent); x++)
-  {
-  transfer_buffer[transfer_buffer_index++] = user_agent[x];
-  }
-   for (x=0; x < sizeof(content_length); x++)
-  {
-  transfer_buffer[transfer_buffer_index++] = content_length[x];  
-  }
-  for (x=0; x < sizeof(nulls); x++)
-  {
-  transfer_buffer[transfer_buffer_index++] = nulls[x];  
-  }
-  for (x=0; x < sizeof(end_frame); x++)
-  {
-  transfer_buffer[transfer_buffer_index++] = end_frame[x];  
-  }*/
+ // for (x=0; x < sizeof(host); x++)
+  //{
+ // transfer_buffer[transfer_buffer_index++] = host[x];
+ // }
+ // for (x=0; x < sizeof(connection); x++)
+ // {
+ // transfer_buffer[transfer_buffer_index++] = connection[x];
+ // }
+ // for (x=0; x < sizeof(user_agent); x++)
+ // {
+ // transfer_buffer[transfer_buffer_index++] = user_agent[x];
+ // }
+ //  for (x=0; x < sizeof(content_length); x++)
+ // {
+ // transfer_buffer[transfer_buffer_index++] = content_length[x];  
+ // }
+ //  for (x=0; x < sizeof(end_frame); x++)
+ // {
+ // transfer_buffer[transfer_buffer_index++] = end_frame[x];  
+ // }
       
 }
 //measurement_header
@@ -531,73 +523,37 @@ void measurement_header (void)
   {
   transfer_buffer[transfer_buffer_index++] = db_index[x];
   }
-  //parse_data_ccid(ccid);
   for (x=0; x < 20; x++)
   {
   transfer_buffer[transfer_buffer_index++] = ccid_buf[x];
   }
-  
-  //parse_data_rssi(rssi);
-  for (x=0; x < 8; x++)
+  for (x=0; x < 4; x++)
   {
   transfer_buffer[transfer_buffer_index++] = float_buffer[x];
   }
-  for (x=0; x < 8; x++)
-  {
+  for (x=0; x < 4; x++)
+   {
   transfer_buffer[transfer_buffer_index++] = status[x];
-  }
+   }
   for (x=0; x < 1; x++)
   {
   transfer_buffer[transfer_buffer_index++] = measurement_count[x];
   }
 }
 
-/*void parse_data_ccid (char *str)
+void float_toBytes (float val, char* bytes_array)
 {
-char buffer_ccid[SIZE];
-char *ptr = buffer_ccid;
-Serial2.print(str);
-delay(500);
-for (int i = 0; i<sizeof(buffer_ccid); i++)
+typedef union cracked_float_t
 {
-    buffer_ccid[i]= Serial2.read();
-    if ((ptr = strchr (buffer_ccid, '8'))) //check whether ' ' is found  
-    { 
-    size_t len = strlen (ptr); //advance pointer by 1, get length 
-        
-        memcpy (fc_buffer_ccid, ptr, len);// copy remaining part of string
-    }
- }
-  memcpy (ccid_buf, fc_buffer_ccid, 20); //copies first 19 bytes to the buf
-}*/
+  float float_variable;
+  char temp_array [4];
+};
+cracked_float_t floatValue;
 
-
-/*void parse_data_rssi (char *str)
-{
-char buffer_rssi[SIZE];
-char *ptr = buffer_rssi;  
-Serial2.print(str);
-delay(1000);
-for (int i = 0; i<sizeof(buffer_rssi); i++)
-{
-    buffer_rssi[i]= Serial2.read();
-    if ((ptr = strchr (buffer_rssi, '3'))) // check whether ' ' is found 
-    { 
-    size_t len = strlen (ptr); //advance pointer by 1, get length 
-    if (len > SIZE - 1) //check if length exceeds available 
-    {     
-    fputs ("error: string exceeds allowable length.\n", stderr);
-    }
-      
-        memcpy (fc_buffer_rssi, ptr, len); //copy remaining part of string
-    } 
- }  
- memcpy (rssi_buf, fc_buffer_rssi, 2); //copies first 2 bytes to the buf
- rssi_int =  atoi(rssi_buf);
- rssi_float = (float) rssi_int;
- sprintf (float_buffer, "%.2f", rssi_float);
-}*/
-void toHex( float fv, char * buf ) {
-    sprintf( buf, "%08lX", *(unsigned long *) &fv );
+floatValue.float_variable = val;
+bytes_array[0] = floatValue.temp_array[3];
+bytes_array[1] = floatValue.temp_array[2];  
+bytes_array[2] = floatValue.temp_array[1];;  
+bytes_array[3] = floatValue.temp_array[0]; 
 }
 
