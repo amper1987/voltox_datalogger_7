@@ -5,8 +5,6 @@
 #include "driver/uart.h"
 #include "driver/gpio.h"
 
-
-
 #define ADC0 36
 #define ADC1 39
 #define ADC2 34
@@ -29,24 +27,10 @@ typedef union cracked_float_t
   float v;
   char b[4];
 };
+
 cracked_float_t floatValue;
 
-typedef union cracked_zero_t
-{
-  float z;
-  char c[4];
-};
-cracked_zero_t zeroValue;
-
-uint32_t sensor_1 (uint32_t time);
-uint32_t sensor_2 (uint32_t time);  
-uint32_t sensor_3 (uint32_t time);
-uint32_t sensor_4 (uint32_t time);
-
-uint32_t period_0 = 100;
-uint32_t period_1 = 100;
-uint32_t period_2 = 100;
-uint32_t period_3 = 100;
+uint32_t period = 100;
 
 float resistor = 56.0;
 int AN_Pot1_i = 0;
@@ -66,7 +50,7 @@ char ccid_buf [21];
 char rssi_buf [5];
 char ccid[] = {"AT#CCID\r\n"};
 char rssi[] = {"AT+CSQ\r\n"};
-char status[4] = {0x00, 0x00, 0x00, 0x00};
+char status[4] = {0x00, 0x00, 0x80, 0x00};
 char measurement_count[] = {'5'};
 char db_index[] = {'C'};
 char float_buffer[10];
@@ -77,9 +61,10 @@ char  *my_str ="POST /telemetry.php HTTP/1.1\r\n"
                "HOST: weile-enterprises.com\r\n"    
                "Connection: Keep-Alive\r\n"         
                "User-Agent: WLS\r\n"               
-               "Content-Length: 25\r\n\r\n"        
+               "Content-Length: 60\r\n\r\n"        
                "\r\n"; //end of frame
 
+uint32_t sensor(uint32_t time, int ADC_number);
 uint32_t convert(int ADC_Raw);
 void uart_init(void);
 void capture_data(void);
@@ -95,10 +80,9 @@ void hhtp_header (void);
 void toHex( float fv, char * buf );
 void float_toBytes (float val, char* bytes_array);
 
-char transfer_buffer[sensor_buffer];
-char http_buffer[1000];
+unsigned char transfer_buffer[sensor_buffer];
+char http_buffer[500];
 uint8_t data_buf [buf_size];
-
 
 
 char buffer0[6];
@@ -145,6 +129,7 @@ void setup() {
    Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
 
    modem_init();
+
   }
 
 void loop()
@@ -152,24 +137,38 @@ void loop()
 //main initialization is complete,
 //open a socket and send data to the server
  Serial2.print("AT#SGACT=1,1\r\n"); //activate the PDP context
-  delay(10000);
+ delay(10000);
  Serial2.print("AT#SD=1,0,80,"); //socket dial command
  Serial2.print('"'); 
  Serial2.print("www.weile-enterprises.com"); //using test server
  Serial2.print('"'); 
  Serial2.print(",0,0,0\r\n"); //000
+ 
  delay(10000);
  hhtp_header();
  measurement_header();
  capture_data();
- Serial2.write(transfer_buffer, 156);
- Serial2.print("\r\n");
+ 
+
+
+ /* for( x = 0; x < 148; x++)
+    {
+    value = transfer_buffer[x];
+    ptr_value =& (const char)value;
+    uart_write_bytes(UART_NUM_2, *ptr_value, 1) ;
+    }*/
+ 
+ Serial.write(transfer_buffer, 182);
+ 
+ Serial2.write(transfer_buffer, 182);
+ 
+ //Serial2.print("\r\n");
 // Serial2.print(measurement_count);
  //Serial2.print(end_frame);
  memset(transfer_buffer,0,sizeof(transfer_buffer));
  transfer_buffer_index = 0;
  //hhtp_header();
- delay(10000);
+  delay(10000);
  Serial2.print("AT#SGACT=1,0\r\n"); //factory reset to TELIT modem
 } 
 
@@ -177,22 +176,22 @@ void loop()
 void capture_data(void)
 {
 // ac_current_sensor_1 
- max_sample_0 = sensor_1(period_0);
+ max_sample_0 = sensor(period, ADC0);
  voltage_0 = convert(max_sample_0);
  ac_voltage_0 = (voltage_0/1000.0) - 1.75;
  ac_current_0 = ((ac_voltage_0/resistor)*100)/0.05;
 // ac_current_sensor_2 
- max_sample_1 = sensor_2(period_1);
+ max_sample_1 = sensor(period, ADC1);
  voltage_1 = convert(max_sample_1);
  ac_voltage_1 = (voltage_1/1000.0) - 1.75;
  ac_current_1 = ((ac_voltage_1/resistor)*100)/0.05;
 // ac_current_sensor_3 
- max_sample_2 = sensor_3(period_2);
+ max_sample_2 = sensor(period, ADC2);
  voltage_2 = convert(max_sample_2);
  ac_voltage_2 = (voltage_2/1000.0) - 1.75;
  ac_current_2 = ((ac_voltage_2/resistor)*100)/0.05;
 // ac_current_sensor_4 
- max_sample_3 = sensor_4(period_3);
+ max_sample_3 = sensor(period, ADC3);
  voltage_3 = convert(max_sample_3);
  ac_voltage_3 = (voltage_3/1000.0) - 1.75;
  ac_current_3 = ((ac_voltage_3/resistor)*100)/0.05;
@@ -206,18 +205,20 @@ void capture_data(void)
 //sensor 1
   // dtostrf(ac_current_0, 5, 2, buffer0);
  //sprintf(buffer0,"%f", ac_current_0);
- float_toBytes (ac_current_0, &buffer0[0]);
+  float_toBytes (ac_current_0, &buffer0[0]);
    for( x = 0; x < 4; x++)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer0[x];
   }
- /*
+ 
 //uart_write_bytes(UART_NUM_2, "\r\n", 2);
 //uart_write_bytes(UART_NUM_2, (const char*)buffer0, sizeof(buffer0));
 //uart_write_bytes(UART_NUM_2, "\r\n", 2);
 // sensor 2
+ 
 //sprintf(buffer1,"%f", ac_current_1);
-  dtostrf(ac_current_1, 5, 2, buffer1);
+  // dtostrf(ac_current_1, 5, 2, buffer1);
+  float_toBytes (ac_current_1, &buffer1[0]);
   for( x = 0; x < 4; x++)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer1[x];
@@ -227,7 +228,8 @@ void capture_data(void)
 
 //sensor 3
 //sprintf(buffer2,"%f", ac_current_2);
-  dtostrf(ac_current_2, 5, 2, buffer2);
+  //dtostrf(ac_current_2, 5, 2, buffer2);
+  float_toBytes (ac_current_2, &buffer2[0]);
   for( x = 0; x < 4; x++)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer2[x];
@@ -237,7 +239,8 @@ void capture_data(void)
 
 // sensor 4
 //sprintf(buffer3,"%f", ac_current_3);
-  dtostrf(ac_current_3, 5, 2, buffer3);
+  float_toBytes (ac_current_3, &buffer3[0]);
+  //dtostrf(ac_current_3, 5, 2, buffer3);
   for( x = 0; x < 4; x++)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer3[x];
@@ -247,7 +250,8 @@ void capture_data(void)
 
 //sensor 5
 //sprintf(buffer8,"%f",dc_current_real);
-  dtostrf(dc_current_real, 5, 2, buffer8);
+ // dtostrf(dc_current_real, 5, 2, buffer8);
+  float_toBytes (dc_current_real, &buffer8[0]);
   for( x = 0; x < 4; x++)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer8[x];
@@ -255,14 +259,15 @@ void capture_data(void)
 //uart_write_bytes(UART_NUM_2, (const char*)buffer8, sizeof(buffer8));
 //uart_write_bytes(UART_NUM_2, "\r\n", 2);
 //uart_write_bytes(UART_NUM_2, (const char*) transfer_buffer, transfer_buffer_index);
-
-// ac_voltage_sense_gen. read the pin mode. 
+// ac_voltage_sense_gen. read the pin mode.
+ 
  pinMode (status_pin_gen, INPUT);
  int sensorValue_0 = digitalRead(status_pin_gen);
  if (sensorValue_0 == HIGH)
  {
-    dtostrf(zero, 5, 2, buffer4);
-  //sprintf (buffer4,"%.2f", one);
+    //dtostrf(zero, 5, 2, buffer4);
+    //sprintf (buffer4,"%.2f", one);
+    float_toBytes (zero, &buffer4[0]);
     for (x=0; x < sizeof(buffer4); x++)
    {
      transfer_buffer[transfer_buffer_index++] = buffer4[x];
@@ -272,8 +277,9 @@ void capture_data(void)
  }
  else
  {
- //sprintf (buffer5,"%.2f", zero);
-   dtostrf(one, 5, 2, buffer5);
+    //sprintf (buffer5,"%.2f", zero);
+   //dtostrf(one, 5, 2, buffer5);
+   float_toBytes (one, &buffer5[0]);
    for (x=0; x < sizeof(buffer5); x++)
    {
     transfer_buffer[transfer_buffer_index++] = buffer5[x];
@@ -287,8 +293,9 @@ void capture_data(void)
  int sensorValue_1 = digitalRead(status_pin_load);
  if (sensorValue_1 == HIGH)
  {
-     dtostrf(zero, 5, 2, buffer6);
+    //dtostrf(zero, 5, 2, buffer6);
     //sprintf (buffer6,"%.2f", one);
+    float_toBytes (zero, &buffer6[0]);
     for (x=0; x < sizeof(buffer6); x++)
    {
      transfer_buffer[transfer_buffer_index++] = buffer6[x];
@@ -299,7 +306,8 @@ void capture_data(void)
  else
  {
     //sprintf (buffer7,"%.2f", zero);
-    dtostrf(one, 5, 2, buffer7);
+    //dtostrf(one, 5, 2, buffer7);
+    float_toBytes (one, &buffer7[0]);
     for (x=0; x < sizeof(buffer7); x++)
    {
     transfer_buffer[transfer_buffer_index++] = buffer7[x];
@@ -309,67 +317,19 @@ void capture_data(void)
  //uart_write_bytes(UART_NUM_2, (const char*) transfer_buffer, transfer_buffer_index);
  //uart_write_bytes(UART_NUM_2, "\r\n", 2); 
  //delay(1000);
- */
+ 
  }
 
-// sensor 1
-uint32_t sensor_1(uint32_t time)
+// AC current sensors max value identifier
+uint32_t sensor(uint32_t time, int ADC_number)
 {
 int max_value = 0;
 int AN_Raw = 0;
 uint32_t currentTime = millis(); // start counting
-uint32_t finishTime = currentTime + period_0; // based on the period 
+uint32_t finishTime = currentTime + time; // based on the period 
 while (currentTime < finishTime)
 {
-AN_Raw = analogRead(ADC0);
-if (max_value < AN_Raw){
-max_value = AN_Raw;}
-currentTime = millis(); 
-}
-return max_value;
-}
-// sensor 2
-uint32_t sensor_2(uint32_t time)
-{
-int max_value = 0;
-int AN_Raw = 0;
-uint32_t currentTime = millis(); // start counting
-uint32_t finishTime = currentTime + period_1; // based on the period 
-while (currentTime < finishTime)
-{
-AN_Raw = analogRead(ADC1);
-if (max_value < AN_Raw){
-max_value = AN_Raw;}
-currentTime = millis(); 
-}
-return max_value;
-}
-// sensor 3
-uint32_t sensor_3(uint32_t time)
-{
-int max_value = 0;
-int AN_Raw = 0;
-uint32_t currentTime = millis(); // start counting
-uint32_t finishTime = currentTime + period_2; // based on the period 
-while (currentTime < finishTime)
-{
-AN_Raw = analogRead(ADC2);
-if (max_value < AN_Raw){
-max_value = AN_Raw;}
-currentTime = millis(); 
-}
-return max_value;
-}
-// sensor 4
-uint32_t sensor_4(uint32_t time)
-{
-int max_value = 0;
-int AN_Raw = 0;
-uint32_t currentTime = millis(); // start counting
-uint32_t finishTime = currentTime + period_3; // based on the period 
-while (currentTime < finishTime)
-{
-AN_Raw = analogRead(ADC3);
+AN_Raw = analogRead(ADC_number);
 if (max_value < AN_Raw){
 max_value = AN_Raw;}
 currentTime = millis(); 
@@ -438,7 +398,7 @@ for (int i = 0; i<sizeof(buffer_ccid); i++)
 }    
       //memcpy (ccid_buf, fc_buffer_ccid, 20); //copies first 19 bytes to the buf
 
-    Serial2.println (strlen(ccid_buf));
+   // Serial2.println (strlen(ccid_buf));
 
   if (strlen(ccid_buf) < 20)
   {
@@ -490,31 +450,11 @@ delay(5000);
 void hhtp_header (void)
 {
   
-  for (x=0; x < 123; x++)
+  for (x=0; x < 124; x++)
   {
   transfer_buffer[transfer_buffer_index++] = my_str[x];
   }
- // for (x=0; x < sizeof(host); x++)
-  //{
- // transfer_buffer[transfer_buffer_index++] = host[x];
- // }
- // for (x=0; x < sizeof(connection); x++)
- // {
- // transfer_buffer[transfer_buffer_index++] = connection[x];
- // }
- // for (x=0; x < sizeof(user_agent); x++)
- // {
- // transfer_buffer[transfer_buffer_index++] = user_agent[x];
- // }
- //  for (x=0; x < sizeof(content_length); x++)
- // {
- // transfer_buffer[transfer_buffer_index++] = content_length[x];  
- // }
- //  for (x=0; x < sizeof(end_frame); x++)
- // {
- // transfer_buffer[transfer_buffer_index++] = end_frame[x];  
- // }
-      
+       
 }
 //measurement_header
 void measurement_header (void)
@@ -531,6 +471,7 @@ void measurement_header (void)
   {
   transfer_buffer[transfer_buffer_index++] = float_buffer[x];
   }
+  
   for (x=0; x < 4; x++)
    {
   transfer_buffer[transfer_buffer_index++] = status[x];
@@ -540,7 +481,7 @@ void measurement_header (void)
   transfer_buffer[transfer_buffer_index++] = measurement_count[x];
   }
 }
-
+//float to byte conversion using union type
 void float_toBytes (float val, char* bytes_array)
 {
 typedef union cracked_float_t
