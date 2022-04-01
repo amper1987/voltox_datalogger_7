@@ -22,13 +22,6 @@
 #define FILTER_LEN  25
 #define SIZE 100
 
-typedef union cracked_float_t
-{
-  float v;
-  char b[4];
-};
-
-cracked_float_t floatValue;
 
 uint32_t period = 100;
 
@@ -50,20 +43,18 @@ char ccid_buf [21];
 char rssi_buf [5];
 char ccid[] = {"AT#CCID\r\n"};
 char rssi[] = {"AT+CSQ\r\n"};
-char status[4] = {0x00, 0x00, 0x80, 0x00};
-char measurement_count[] = {'5'};
+char status[4] = {0x00, 0x00, 0x00, 0x00};
+char measurement_count[] = {'1'};
 char db_index[] = {'C'};
 char float_buffer[10];
 size_t len;
-
 
 char  *my_str ="POST /telemetry.php HTTP/1.1\r\n"
                "HOST: weile-enterprises.com\r\n"    
                "Connection: Keep-Alive\r\n"         
                "User-Agent: WLS\r\n"               
-               "Content-Length: 60\r\n\r\n"        
-               "\r\n"; //end of frame
-
+               "Content-Length: 58\r\n\r\n"; // end of frame        
+               
 uint32_t sensor(uint32_t time, int ADC_number);
 uint32_t convert(int ADC_Raw);
 void uart_init(void);
@@ -79,12 +70,9 @@ void hhtp_header (void);
 //void modem_init (char *str)
 void toHex( float fv, char * buf );
 void float_toBytes (float val, char* bytes_array);
-
 unsigned char transfer_buffer[sensor_buffer];
 char http_buffer[500];
 uint8_t data_buf [buf_size];
-
-
 char buffer0[6];
 char buffer1[4];
 char buffer2[4];
@@ -95,7 +83,6 @@ char buffer6[4];
 char buffer7[4];
 char buffer8[4];
 char buffer9[20];
-
 // sensor 1
 int max_sample_0;
 float voltage_0 = 0.0;
@@ -123,15 +110,10 @@ float dc_voltage_real = 0.0;
 float dc_current_real = 0.0;
 
 void setup() {
-
    Serial.begin(9600);
-
    Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
-
    modem_init();
-
   }
-
 void loop()
 {
 //main initialization is complete,
@@ -143,36 +125,18 @@ void loop()
  Serial2.print("www.weile-enterprises.com"); //using test server
  Serial2.print('"'); 
  Serial2.print(",0,0,0\r\n"); //000
- 
  delay(10000);
  hhtp_header();
  measurement_header();
  capture_data();
- 
-
-
- /* for( x = 0; x < 148; x++)
-    {
-    value = transfer_buffer[x];
-    ptr_value =& (const char)value;
-    uart_write_bytes(UART_NUM_2, *ptr_value, 1) ;
-    }*/
- 
- Serial.write(transfer_buffer, 182);
- 
- Serial2.write(transfer_buffer, 182);
- 
- //Serial2.print("\r\n");
-// Serial2.print(measurement_count);
- //Serial2.print(end_frame);
+ Serial.write(transfer_buffer, 180);
+ Serial2.write(transfer_buffer, 180);
  memset(transfer_buffer,0,sizeof(transfer_buffer));
  transfer_buffer_index = 0;
- //hhtp_header();
-  delay(10000);
+ delay(10000);
  Serial2.print("AT#SGACT=1,0\r\n"); //factory reset to TELIT modem
 } 
-
-
+// capture data from 4xAC_current, 1xDC_current and 2xAC_voltage sensors 
 void capture_data(void)
 {
 // ac_current_sensor_1 
@@ -203,63 +167,46 @@ void capture_data(void)
   
 // UART transmisiion of 4 ac current sensors
 //sensor 1
-  // dtostrf(ac_current_0, 5, 2, buffer0);
- //sprintf(buffer0,"%f", ac_current_0);
+//sprintf(buffer0,"%f", ac_current_0);
+//dtostrf(ac_current_0, 5, 2, buffer0);
   float_toBytes (ac_current_0, &buffer0[0]);
    for( x = 0; x < 4; x++)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer0[x];
   }
- 
-//uart_write_bytes(UART_NUM_2, "\r\n", 2);
-//uart_write_bytes(UART_NUM_2, (const char*)buffer0, sizeof(buffer0));
-//uart_write_bytes(UART_NUM_2, "\r\n", 2);
 // sensor 2
- 
 //sprintf(buffer1,"%f", ac_current_1);
-  // dtostrf(ac_current_1, 5, 2, buffer1);
+//dtostrf(ac_current_1, 5, 2, buffer1);
   float_toBytes (ac_current_1, &buffer1[0]);
   for( x = 0; x < 4; x++)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer1[x];
   }
-//uart_write_bytes(UART_NUM_2, (const char*)buffer1, sizeof(buffer1));
-//uart_write_bytes(UART_NUM_2, "\r\n", 2);
-
 //sensor 3
 //sprintf(buffer2,"%f", ac_current_2);
-  //dtostrf(ac_current_2, 5, 2, buffer2);
+//dtostrf(ac_current_2, 5, 2, buffer2);
   float_toBytes (ac_current_2, &buffer2[0]);
   for( x = 0; x < 4; x++)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer2[x];
   }
-//uart_write_bytes(UART_NUM_2, (const char*)buffer2, sizeof(buffer2));
-//uart_write_bytes(UART_NUM_2, "\r\n", 2);
-
 // sensor 4
 //sprintf(buffer3,"%f", ac_current_3);
+//dtostrf(ac_current_3, 5, 2, buffer3);
   float_toBytes (ac_current_3, &buffer3[0]);
-  //dtostrf(ac_current_3, 5, 2, buffer3);
   for( x = 0; x < 4; x++)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer3[x];
   }
-//uart_write_bytes(UART_NUM_2, (const char*)buffer3, sizeof(buffer3));
-//uart_write_bytes(UART_NUM_2, "\r\n", 2);
-
 //sensor 5
 //sprintf(buffer8,"%f",dc_current_real);
- // dtostrf(dc_current_real, 5, 2, buffer8);
+//dtostrf(dc_current_real, 5, 2, buffer8);
   float_toBytes (dc_current_real, &buffer8[0]);
   for( x = 0; x < 4; x++)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer8[x];
   }
-//uart_write_bytes(UART_NUM_2, (const char*)buffer8, sizeof(buffer8));
-//uart_write_bytes(UART_NUM_2, "\r\n", 2);
-//uart_write_bytes(UART_NUM_2, (const char*) transfer_buffer, transfer_buffer_index);
-// ac_voltage_sense_gen. read the pin mode.
+//ac_voltage_sense_gen. read the pin mode.
  
  pinMode (status_pin_gen, INPUT);
  int sensorValue_0 = digitalRead(status_pin_gen);
@@ -272,12 +219,10 @@ void capture_data(void)
    {
      transfer_buffer[transfer_buffer_index++] = buffer4[x];
    }
- // uart_write_bytes(UART_NUM_2,(const char*)buffer4, sizeof(buffer4));
- //uart_write_bytes(UART_NUM_2, "\r\n", 2);
- }
+  }
  else
  {
-    //sprintf (buffer5,"%.2f", zero);
+   //sprintf (buffer5,"%.2f", zero);
    //dtostrf(one, 5, 2, buffer5);
    float_toBytes (one, &buffer5[0]);
    for (x=0; x < sizeof(buffer5); x++)
@@ -285,10 +230,7 @@ void capture_data(void)
     transfer_buffer[transfer_buffer_index++] = buffer5[x];
    }
  }
- //uart_write_bytes(UART_NUM_2,(const char*)buffer5, sizeof(buffer5));
- //uart_write_bytes(UART_NUM_2, "\r\n", 2);
-
- // ac_voltage_sense_load. read the pin mode. 
+// ac_voltage_sense_load. read the pin mode. 
  pinMode (status_pin_load, INPUT);
  int sensorValue_1 = digitalRead(status_pin_load);
  if (sensorValue_1 == HIGH)
@@ -300,9 +242,7 @@ void capture_data(void)
    {
      transfer_buffer[transfer_buffer_index++] = buffer6[x];
    }
- //uart_write_bytes(UART_NUM_2,(const char*)buffer6, sizeof(buffer6));
- //uart_write_bytes(UART_NUM_2, "\r\n", 2);
-}
+ }
  else
  {
     //sprintf (buffer7,"%.2f", zero);
@@ -312,14 +252,9 @@ void capture_data(void)
    {
     transfer_buffer[transfer_buffer_index++] = buffer7[x];
    }
- }
-
- //uart_write_bytes(UART_NUM_2, (const char*) transfer_buffer, transfer_buffer_index);
- //uart_write_bytes(UART_NUM_2, "\r\n", 2); 
- //delay(1000);
+  }
  
- }
-
+}
 // AC current sensors max value identifier
 uint32_t sensor(uint32_t time, int ADC_number)
 {
@@ -336,7 +271,7 @@ currentTime = millis();
 }
 return max_value;
 }
-
+//convert the RAW value into the real values
 uint32_t convert(int ADC_Raw)
 {
   esp_adc_cal_characteristics_t adc_chars;
@@ -344,7 +279,7 @@ uint32_t convert(int ADC_Raw)
   esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars);
   return(esp_adc_cal_raw_to_voltage(ADC_Raw, &adc_chars));
 }
-
+//average the dc current values of the battery 
 uint32_t average_dc_current(int dc_voltage)
 {
   int i = 0;
@@ -361,7 +296,7 @@ uint32_t average_dc_current(int dc_voltage)
   }
   return (Sum/FILTER_LEN); 
 }
-
+//Modem initialization
 void modem_init (void)
 {
 char buffer_ccid[SIZE];
@@ -369,9 +304,6 @@ char *ptr = buffer_ccid;
 char buffer_rssi[SIZE];
 char *str = buffer_rssi;
 char *pt = ccid_buf; 
-//Serial2.print(str);
-//delay(500); 
-//Modem initialization
 Serial2.print("AT&F\r\n"); //factory reset to TELIT modem
 delay(2000);
 Serial2.print("ATE0\r\n"); //switch echo off
@@ -383,12 +315,12 @@ delay(2000);
 for (int i = 0; i<sizeof(buffer_ccid); i++)
 {
     buffer_ccid[i]= Serial2.read();
-    if ((ptr = strchr (buffer_ccid, '8'))) //check whether ' ' is found  
-    {
+  if ((ptr = strchr (buffer_ccid, '8'))) //check whether ' ' is found  
+  {
       //size_t len = strlen (ptr); //advance pointer by 1, get length 
       memcpy (ccid_buf, ptr, 20);// copy remaining part of string
-      for (int i = 0; i<sizeof(ccid_buf); i++)
-      {  
+    for (int i = 0; i<sizeof(ccid_buf); i++)
+    {  
       if ((pt = strchr (ccid_buf, 'G')))
       {
        ESP.restart();
@@ -396,16 +328,10 @@ for (int i = 0; i<sizeof(buffer_ccid); i++)
     }
   }  
 }    
-      //memcpy (ccid_buf, fc_buffer_ccid, 20); //copies first 19 bytes to the buf
-
-   // Serial2.println (strlen(ccid_buf));
-
-  if (strlen(ccid_buf) < 20)
+   if (strlen(ccid_buf) < 20)
   {
     ESP.restart();
   }
-  
-
 Serial2.print("AT+CSQ\r\n"); //check signal quality
 delay(2000);
   for (int i = 0; i<sizeof(buffer_rssi); i++)
@@ -421,18 +347,9 @@ delay(2000);
       memcpy (fc_buffer_rssi, str, len); //copy remaining part of string
     } 
   } 
-  memcpy (rssi_buf, fc_buffer_rssi, 2); //copies first 2 bytes to the buf
-  rssi_float =  atof(rssi_buf);
-  floatValue.v = rssi_float;
-  float_buffer[0] = floatValue.b[3];
-  float_buffer[1] = floatValue.b[2];  
-  float_buffer[2] = floatValue.b[1];  
-  float_buffer[3] = floatValue.b[0]; 
- //sprintf (float_buffer, "%08X", (unsigned long) rssi_float);
- //sprintf (float_buffer, "%.2f", rssi_float);
- 
- //printf("%02hhx", (char)(*pt++));
-   
+memcpy (rssi_buf, fc_buffer_rssi, 2); //copies first 2 bytes to the buf
+rssi_float =  atof(rssi_buf);
+float_toBytes (rssi_float, &float_buffer[0]);
 Serial2.print("AT+CREG?\r\n"); //check registration switch
 delay(500);
 Serial2.print("AT#SGACT=1,0\r\n"); //deactivate the PDP context
@@ -445,16 +362,14 @@ delay(500);
 Serial2.print("AT#SCFG=1,1,500,90,600,50\r\n"); //timeout set to 5 seconds
 delay(5000);
 }
-
 //hhtp_header
 void hhtp_header (void)
 {
   
-  for (x=0; x < 124; x++)
+  for (x=0; x < 122; x++)
   {
   transfer_buffer[transfer_buffer_index++] = my_str[x];
   }
-       
 }
 //measurement_header
 void measurement_header (void)
