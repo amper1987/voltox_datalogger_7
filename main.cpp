@@ -25,15 +25,18 @@
 
 uint32_t period = 100;
 
-float resistor = 56.0;
+float resistor = 56.0f;
 int AN_Pot1_i = 0;
-int   transfer_buffer_index = 0;  
+int transfer_buffer_index = 0;  
 int  x;
-float one = 1.00;
-float zero = 0.00;
+float one = 1.00f;
+float zero = 0.00f;
 int length = 0;
 int rssi_int;
 float rssi_float = 0.0;
+float divider = 0.07f;
+float thousand = 1000.0f;
+float subtraction = 1.68f;
 
 char fc_buffer_ccid [SIZE]; // first character of the buffer buffer
 char fc_buffer_rssi [SIZE]; // first character of the buffer buffer 
@@ -70,44 +73,46 @@ void hhtp_header (void);
 //void modem_init (char *str)
 void toHex( float fv, char * buf );
 void float_toBytes (float val, char* bytes_array);
+float round_to_dp( float in_value, int decimal_place );
+//int precision (ac_current_0);
 unsigned char transfer_buffer[sensor_buffer];
-char http_buffer[500];
+unsigned char http_buffer[500];
 uint8_t data_buf [buf_size];
-char buffer0[6];
-char buffer1[4];
-char buffer2[4];
-char buffer3[4];
-char buffer4[4];
-char buffer5[4];
-char buffer6[4];
-char buffer7[4];
-char buffer8[4];
-char buffer9[20];
+char buffer0[50];
+char buffer1[50];
+char buffer2[50];
+char buffer3[50];
+char buffer4[50];
+char buffer5[50];
+char buffer6[50];
+char buffer7[50];
+char buffer8[50];
+char buffer9[50];
 // sensor 1
 int max_sample_0;
-float voltage_0 = 0.0;
-float ac_voltage_0 = 0.0;
-float ac_current_0 = 0.0;
+float voltage_0 = 0.0f;
+float ac_voltage_0 = 0.0f;
+float ac_current_0 = 0.0f;
 // sensor 2
 int max_sample_1;
-float voltage_1 = 0.0;
-float ac_voltage_1 = 0.0;
-float ac_current_1 = 0.0;
+float voltage_1 = 0.0f;
+float ac_voltage_1 = 0.0f;
+float ac_current_1 = 0.0f;
 // sensor 3
 int max_sample_2;
-float voltage_2 = 0.0;
-float ac_voltage_2 = 0.0;
-float ac_current_2 = 0.0;
+float voltage_2 = 0.0f;
+float ac_voltage_2 = 0.0f;
+float ac_current_2 = 0.0f;
 // sensor 4
 int max_sample_3;
-float voltage_3 = 0.0;
-float ac_voltage_3 = 0.0;
-float ac_current_3 = 0.0;
+float voltage_3 = 0.0f;
+float ac_voltage_3 = 0.0f;
+float ac_current_3 = 0.0f;
 //sensor 5
 int dc_voltage = 0;
 int dc_voltage_average = 0;
-float dc_voltage_real = 0.0;
-float dc_current_real = 0.0;
+float dc_voltage_real = 0.0f;
+float dc_current_real = 0.0f;
 
 void setup() {
    Serial.begin(9600);
@@ -129,7 +134,7 @@ void loop()
  hhtp_header();
  measurement_header();
  capture_data();
- Serial.write(transfer_buffer, 180);
+// Serial.write(transfer_buffer, 180);
  Serial2.write(transfer_buffer, 180);
  memset(transfer_buffer,0,sizeof(transfer_buffer));
  transfer_buffer_index = 0;
@@ -142,46 +147,50 @@ void capture_data(void)
 // ac_current_sensor_1 
  max_sample_0 = sensor(period, ADC0);
  voltage_0 = convert(max_sample_0);
- ac_voltage_0 = (voltage_0/1000.0) - 1.75;
- ac_current_0 = ((ac_voltage_0/resistor)*100)/0.05;
-// ac_current_sensor_2 
+ ac_voltage_0 = (voltage_0/thousand) - subtraction;
+ ac_current_0 = ((ac_voltage_0/resistor)*100)/divider;
+ // ac_current_sensor_2 
  max_sample_1 = sensor(period, ADC1);
  voltage_1 = convert(max_sample_1);
- ac_voltage_1 = (voltage_1/1000.0) - 1.75;
- ac_current_1 = ((ac_voltage_1/resistor)*100)/0.05;
+ ac_voltage_1 = (voltage_1/thousand) - subtraction;
+ ac_current_1 = ((ac_voltage_1/resistor)*100)/divider;
 // ac_current_sensor_3 
  max_sample_2 = sensor(period, ADC2);
  voltage_2 = convert(max_sample_2);
- ac_voltage_2 = (voltage_2/1000.0) - 1.75;
- ac_current_2 = ((ac_voltage_2/resistor)*100)/0.05;
-// ac_current_sensor_4 
+ ac_voltage_2 = (voltage_2/thousand) - subtraction;
+ ac_current_2 = ((ac_voltage_2/resistor)*100)/divider;
+// ac_current_sensor_4
  max_sample_3 = sensor(period, ADC3);
  voltage_3 = convert(max_sample_3);
- ac_voltage_3 = (voltage_3/1000.0) - 1.75;
- ac_current_3 = ((ac_voltage_3/resistor)*100)/0.05;
+ ac_voltage_3 = (voltage_3/thousand) - subtraction;
+ ac_current_3 = ((ac_voltage_3/resistor)*100)/divider;
  //dc battery current readings
  dc_voltage = analogRead(ADC4);
  dc_voltage_average = average_dc_current(dc_voltage);
- dc_voltage_real = ((dc_voltage*3.3)/4095);
- dc_current_real = ((dc_voltage_real-2.42)*150)/0.625; 
+ dc_voltage_real = ((dc_voltage*3.3f)/4095);
+ dc_current_real = ((dc_voltage_real-2.418f)*150)/0.64f; 
   
 // UART transmisiion of 4 ac current sensors
 //sensor 1
 //sprintf(buffer0,"%f", ac_current_0);
 //dtostrf(ac_current_0, 5, 2, buffer0);
+  //ac_current_0 = round_to_dp(ac_current_0, 2);
   float_toBytes (ac_current_0, &buffer0[0]);
    for( x = 0; x < 4; x++)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer0[x];
   }
+
 // sensor 2
 //sprintf(buffer1,"%f", ac_current_1);
 //dtostrf(ac_current_1, 5, 2, buffer1);
+  //ac_current_1 = round_to_dp(ac_current_1, 2);
   float_toBytes (ac_current_1, &buffer1[0]);
   for( x = 0; x < 4; x++)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer1[x];
   }
+  
 //sensor 3
 //sprintf(buffer2,"%f", ac_current_2);
 //dtostrf(ac_current_2, 5, 2, buffer2);
@@ -190,6 +199,7 @@ void capture_data(void)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer2[x];
   }
+  
 // sensor 4
 //sprintf(buffer3,"%f", ac_current_3);
 //dtostrf(ac_current_3, 5, 2, buffer3);
@@ -198,9 +208,11 @@ void capture_data(void)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer3[x];
   }
+   
 //sensor 5
 //sprintf(buffer8,"%f",dc_current_real);
 //dtostrf(dc_current_real, 5, 2, buffer8);
+
   float_toBytes (dc_current_real, &buffer8[0]);
   for( x = 0; x < 4; x++)
   {
@@ -413,3 +425,9 @@ bytes_array[2] = floatValue.temp_array[1];;
 bytes_array[3] = floatValue.temp_array[0]; 
 }
 
+float round_to_dp( float in_value, int decimal_place )
+{
+	float multiplier = powf( 10.0f, decimal_place );
+	in_value = roundf( in_value * multiplier ) / multiplier;
+	return in_value;
+}
