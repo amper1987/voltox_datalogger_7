@@ -19,7 +19,7 @@
 #define buf_size 400
 #define sensor_buffer 400
 #define current_buffer (4)
-#define FILTER_LEN  25
+#define FILTER_LEN  150
 #define SIZE 100
 
 
@@ -34,7 +34,7 @@ float zero = 0.00f;
 int length = 0;
 int rssi_int;
 float rssi_float = 0.0;
-float divider = 0.07f;
+float divider = 0.075f;
 float thousand = 1000.0f;
 float subtraction = 1.68f;
 
@@ -62,7 +62,8 @@ uint32_t sensor(uint32_t time, int ADC_number);
 uint32_t convert(int ADC_Raw);
 void uart_init(void);
 void capture_data(void);
-uint32_t average_dc_current(int dc_voltage);
+//uint32_t average_dc_current(int dc_voltage);
+uint32_t average_mid_current(int ADC_number);
 void modem_init (void);
 uint32_t AN_Pot1_Buffer[FILTER_LEN] = {0};
 void print_string();
@@ -113,6 +114,7 @@ int dc_voltage = 0;
 int dc_voltage_average = 0;
 float dc_voltage_real = 0.0f;
 float dc_current_real = 0.0f;
+int dc_voltage_int = 0;
 
 void setup() {
    Serial.begin(9600);
@@ -134,7 +136,7 @@ void loop()
  hhtp_header();
  measurement_header();
  capture_data();
-// Serial.write(transfer_buffer, 180);
+ //Serial.write(transfer_buffer, 180);
  Serial2.write(transfer_buffer, 180);
  memset(transfer_buffer,0,sizeof(transfer_buffer));
  transfer_buffer_index = 0;
@@ -165,16 +167,16 @@ void capture_data(void)
  ac_voltage_3 = (voltage_3/thousand) - subtraction;
  ac_current_3 = ((ac_voltage_3/resistor)*100)/divider;
  //dc battery current readings
- dc_voltage = analogRead(ADC4);
- dc_voltage_average = average_dc_current(dc_voltage);
- dc_voltage_real = ((dc_voltage*3.3f)/4095);
- dc_current_real = ((dc_voltage_real-2.418f)*150)/0.64f; 
-  
+ dc_voltage_average = average_mid_current(ADC4);
+ dc_voltage_int = dc_voltage_average - 3000;
+ dc_voltage_real = ((dc_voltage_int*3.3)/4095);
+ dc_current_real = ((dc_voltage_real)*150)/0.625;
 // UART transmisiion of 4 ac current sensors
 //sensor 1
 //sprintf(buffer0,"%f", ac_current_0);
 //dtostrf(ac_current_0, 5, 2, buffer0);
   //ac_current_0 = round_to_dp(ac_current_0, 2);
+  
   float_toBytes (ac_current_0, &buffer0[0]);
    for( x = 0; x < 4; x++)
   {
@@ -208,7 +210,7 @@ void capture_data(void)
   {
     transfer_buffer[transfer_buffer_index++] =  buffer3[x];
   }
-   
+  
 //sensor 5
 //sprintf(buffer8,"%f",dc_current_real);
 //dtostrf(dc_current_real, 5, 2, buffer8);
@@ -219,14 +221,12 @@ void capture_data(void)
     transfer_buffer[transfer_buffer_index++] =  buffer8[x];
   }
 //ac_voltage_sense_gen. read the pin mode.
- 
- pinMode (status_pin_gen, INPUT);
- int sensorValue_0 = digitalRead(status_pin_gen);
- if (sensorValue_0 == HIGH)
+ int sensorValue_0 = analogRead(status_pin_gen);
+ if (sensorValue_0 < 3000)
  {
     //dtostrf(zero, 5, 2, buffer4);
     //sprintf (buffer4,"%.2f", one);
-    float_toBytes (zero, &buffer4[0]);
+    float_toBytes (one, &buffer4[0]);
     for (x=0; x < sizeof(buffer4); x++)
    {
      transfer_buffer[transfer_buffer_index++] = buffer4[x];
@@ -236,20 +236,19 @@ void capture_data(void)
  {
    //sprintf (buffer5,"%.2f", zero);
    //dtostrf(one, 5, 2, buffer5);
-   float_toBytes (one, &buffer5[0]);
+   float_toBytes (zero, &buffer5[0]);
    for (x=0; x < sizeof(buffer5); x++)
    {
     transfer_buffer[transfer_buffer_index++] = buffer5[x];
    }
  }
 // ac_voltage_sense_load. read the pin mode. 
- pinMode (status_pin_load, INPUT);
- int sensorValue_1 = digitalRead(status_pin_load);
- if (sensorValue_1 == HIGH)
+ int sensorValue_1 = analogRead(status_pin_load);
+ if (sensorValue_1 < 3000)
  {
     //dtostrf(zero, 5, 2, buffer6);
     //sprintf (buffer6,"%.2f", one);
-    float_toBytes (zero, &buffer6[0]);
+    float_toBytes (one, &buffer6[0]);
     for (x=0; x < sizeof(buffer6); x++)
    {
      transfer_buffer[transfer_buffer_index++] = buffer6[x];
@@ -259,54 +258,12 @@ void capture_data(void)
  {
     //sprintf (buffer7,"%.2f", zero);
     //dtostrf(one, 5, 2, buffer7);
-    float_toBytes (one, &buffer7[0]);
+    float_toBytes (zero, &buffer7[0]);
     for (x=0; x < sizeof(buffer7); x++)
    {
     transfer_buffer[transfer_buffer_index++] = buffer7[x];
    }
   }
- 
-}
-// AC current sensors max value identifier
-uint32_t sensor(uint32_t time, int ADC_number)
-{
-int max_value = 0;
-int AN_Raw = 0;
-uint32_t currentTime = millis(); // start counting
-uint32_t finishTime = currentTime + time; // based on the period 
-while (currentTime < finishTime)
-{
-AN_Raw = analogRead(ADC_number);
-if (max_value < AN_Raw){
-max_value = AN_Raw;}
-currentTime = millis(); 
-}
-return max_value;
-}
-//convert the RAW value into the real values
-uint32_t convert(int ADC_Raw)
-{
-  esp_adc_cal_characteristics_t adc_chars;
-  
-  esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars);
-  return(esp_adc_cal_raw_to_voltage(ADC_Raw, &adc_chars));
-}
-//average the dc current values of the battery 
-uint32_t average_dc_current(int dc_voltage)
-{
-  int i = 0;
-  uint32_t Sum = 0;
-  
-  AN_Pot1_Buffer[AN_Pot1_i++] = dc_voltage;
-  if(AN_Pot1_i == FILTER_LEN)
-  {
-    AN_Pot1_i = 0;
-  }
-  for(i=0; i<FILTER_LEN; i++)
-  {
-    Sum += AN_Pot1_Buffer[i];
-  }
-  return (Sum/FILTER_LEN); 
 }
 //Modem initialization
 void modem_init (void)
@@ -424,10 +381,41 @@ bytes_array[1] = floatValue.temp_array[2];
 bytes_array[2] = floatValue.temp_array[1];;  
 bytes_array[3] = floatValue.temp_array[0]; 
 }
-
-float round_to_dp( float in_value, int decimal_place )
+//average the dc current values of the battery 
+uint32_t average_mid_current(int ADC_number)
 {
-	float multiplier = powf( 10.0f, decimal_place );
-	in_value = roundf( in_value * multiplier ) / multiplier;
-	return in_value;
+int i = 0;
+uint32_t Sum = 0;
+int dc_voltage = 0;
+for (i = 0; i< FILTER_LEN; i++)
+{
+dc_voltage = analogRead(ADC_number);
+AN_Pot1_Buffer[i] = dc_voltage;
+Sum += AN_Pot1_Buffer[i];
+}
+return (Sum/FILTER_LEN);
+}
+// AC current sensors max value identifier
+uint32_t sensor(uint32_t time, int ADC_number)
+{
+int max_value = 0;
+int AN_Raw = 0;
+uint32_t currentTime = millis(); // start counting
+uint32_t finishTime = currentTime + time; // based on the period 
+while (currentTime < finishTime)
+{
+AN_Raw = analogRead(ADC_number);
+if (max_value < AN_Raw){
+max_value = AN_Raw;}
+currentTime = millis(); 
+}
+return max_value;
+}
+//convert the RAW value into the real values
+uint32_t convert(int ADC_Raw)
+{
+  esp_adc_cal_characteristics_t adc_chars;
+  
+  esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars);
+  return(esp_adc_cal_raw_to_voltage(ADC_Raw, &adc_chars));
 }
