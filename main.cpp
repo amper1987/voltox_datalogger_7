@@ -4,6 +4,7 @@
 #include "esp_adc_cal.h"
 #include "driver/uart.h"
 #include "driver/gpio.h"
+#include <esp_task_wdt.h>
 
 #define ADC0 36
 #define ADC1 39
@@ -21,6 +22,7 @@
 #define current_buffer (4)
 #define FILTER_LEN  150
 #define SIZE 100
+#define WDT_TIMEOUT 300
 
 
 uint32_t period = 100;
@@ -117,8 +119,10 @@ float dc_current_real = 0.0f;
 int dc_voltage_int = 0;
 
 void setup() {
-   Serial.begin(9600);
+   //Serial.begin(9600);
    Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
+   esp_task_wdt_init(WDT_TIMEOUT, true); //enable panic so ESP32 restarts
+   esp_task_wdt_add(NULL); //add current thread to WDT watch
    modem_init();
   }
 void loop()
@@ -227,7 +231,7 @@ void capture_data(void)
     //dtostrf(zero, 5, 2, buffer4);
     //sprintf (buffer4,"%.2f", one);
     float_toBytes (one, &buffer4[0]);
-    for (x=0; x < sizeof(buffer4); x++)
+    for (x=0; x < 4; x++)
    {
      transfer_buffer[transfer_buffer_index++] = buffer4[x];
    }
@@ -237,7 +241,7 @@ void capture_data(void)
    //sprintf (buffer5,"%.2f", zero);
    //dtostrf(one, 5, 2, buffer5);
    float_toBytes (zero, &buffer5[0]);
-   for (x=0; x < sizeof(buffer5); x++)
+   for (x=0; x < 4; x++)
    {
     transfer_buffer[transfer_buffer_index++] = buffer5[x];
    }
@@ -249,7 +253,7 @@ void capture_data(void)
     //dtostrf(zero, 5, 2, buffer6);
     //sprintf (buffer6,"%.2f", one);
     float_toBytes (one, &buffer6[0]);
-    for (x=0; x < sizeof(buffer6); x++)
+    for (x=0; x < 4; x++)
    {
      transfer_buffer[transfer_buffer_index++] = buffer6[x];
    }
@@ -259,7 +263,7 @@ void capture_data(void)
     //sprintf (buffer7,"%.2f", zero);
     //dtostrf(one, 5, 2, buffer7);
     float_toBytes (zero, &buffer7[0]);
-    for (x=0; x < sizeof(buffer7); x++)
+    for (x=0; x < 4; x++)
    {
     transfer_buffer[transfer_buffer_index++] = buffer7[x];
    }
@@ -309,7 +313,7 @@ delay(2000);
     if ((str = strchr (buffer_rssi, 'Q'))) // check whether ' ' is found 
     { 
     size_t len = strlen (str+=3); //advance pointer by 1, get length 
-    if (len > SIZE - 1) //check if length exceeds available 
+    if (len > SIZE + 3) //check if length exceeds available 
     {     
     fputs ("error: string exceeds allowable length.\n", stderr);
     }
